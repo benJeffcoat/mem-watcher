@@ -83,6 +83,19 @@ def _parse_percent(value: str) -> float:
     return float(value.strip().replace("%", ""))
 
 
+def _parse_top_memory_value(value: str) -> int:
+    """Parse Crestron `top -lines:all` memory columns.
+
+    On these processors the `rss`/`vsz` columns are effectively reported as KB-scale
+    integers, and some outputs include a trailing `m` artifact. Treat the value as KB
+    after stripping any non-numeric suffix.
+    """
+    match = re.match(r"(\d+)", value.strip().lower())
+    if not match:
+        raise ValueError(f"Could not parse top memory value: {value!r}")
+    return int(match.group(1)) * 1024
+
+
 def _parse_ramfree(output: str) -> MemorySnapshot:
     percent_match = RAMFREE_PERCENT_RE.search(output)
     total_match = RAMFREE_TOTAL_RE.search(output)
@@ -127,11 +140,62 @@ def _parse_taskstat(output: str) -> list[ProcessInfo]:
             )
         except ValueError:
             continue
-        if process.rss_bytes <= 0:
-            continue
         processes.append(process)
     processes.sort(key=lambda item: item.rss_bytes, reverse=True)
     return processes
+
+
+def _parse_top(output: str) -> list[ProcessInfo]:
+    processes: list[ProcessInfo] = []
+    header_seen = False
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.lower().startswith("pid") and "name" in line.lower():
+            header_seen = True
+            continue
+        if line.lower().startswith("top complete"):
+            break
+        if not header_seen or not line[0].isdigit():
+            continue
+        parts = re.split(r"\s+", line, maxsplit=10)
+        if len(parts) < 11:
+            continue
+        try:
+            processes.append(
+                ProcessInfo(
+                    pid=int(parts[0]),
+                    name=parts[10],
+                    command=parts[10],
+                    rss_bytes=_parse_top_memory_value(parts[6]),
+                    pss_bytes=0,
+                    user_percent=_parse_percent(parts[8]),
+                    sys_percent=_parse_percent(parts[9]),
+                )
+            )
+        except ValueError:
+            continue
+    return processes
+
+
+def _merge_process_lists(taskstat_processes: list[ProcessInfo], top_processes: list[ProcessInfo]) -> list[ProcessInfo]:
+    merged: dict[int, ProcessInfo] = {process.pid: process for process in taskstat_processes}
+    for process in top_processes:
+        existing = merged.get(process.pid)
+        if existing is None:
+            merged[process.pid] = process
+            continue
+        merged[process.pid] = ProcessInfo(
+            pid=existing.pid,
+            name=existing.name or process.name,
+            command=existing.command or process.command,
+            rss_bytes=max(existing.rss_bytes, process.rss_bytes),
+            pss_bytes=existing.pss_bytes,
+            user_percent=process.user_percent if process.user_percent or process.sys_percent else existing.user_percent,
+            sys_percent=process.sys_percent if process.user_percent or process.sys_percent else existing.sys_percent,
+        )
+    return sorted(merged.values(), key=lambda item: (item.rss_bytes, item.user_percent + item.sys_percent), reverse=True)
 
 
 def _parse_uptime(output: str) -> str | None:
@@ -217,9 +281,13 @@ class MonitorSession:
         try:
             ramfree_output = await self._run_command("ramfree")
             taskstat_output = await self._run_command("taskstat")
+            top_output = await self._run_command("top -lines:all")
             uptime_output = await self._run_command("uptime")
             self.memory = _parse_ramfree(ramfree_output)
-            self.processes = _parse_taskstat(taskstat_output)
+            self.processes = _merge_process_lists(
+                _parse_taskstat(taskstat_output),
+                _parse_top(top_output),
+            )
             self.uptime = _parse_uptime(uptime_output)
             self.last_snapshot_at = _now_iso()
             self.connected = True

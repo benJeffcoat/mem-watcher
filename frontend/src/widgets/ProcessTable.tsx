@@ -2,14 +2,12 @@ import type { ProcessInfo } from '../types/monitor'
 import { formatBytes, formatCpu } from '../utils/formatters'
 
 export function ProcessTable({ processes }: { processes: ProcessInfo[] }) {
-  const topProcesses = processes.slice(0, 10)
-
   return (
     <section className="table-card">
       <div className="card-head">
         <div>
           <p className="eyebrow">Process Table</p>
-          <h2>Top Memory Consumers</h2>
+          <h2>All Processes</h2>
         </div>
       </div>
       <div className="table-wrap">
@@ -25,14 +23,14 @@ export function ProcessTable({ processes }: { processes: ProcessInfo[] }) {
             </tr>
           </thead>
           <tbody>
-            {topProcesses.length === 0 ? (
+            {processes.length === 0 ? (
               <tr>
                 <td colSpan={6} className="empty-row">
                   No process data yet.
                 </td>
               </tr>
             ) : (
-              topProcesses.map((process) => (
+              processes.map((process) => (
                 <tr key={`${process.pid}-${process.command}`}>
                   <td>{process.name}</td>
                   <td>{process.pid}</td>

@@ -17,7 +17,6 @@ export function ActiveSessionCard({
     <article className={`panel-card saved-card active-card ${selected ? 'session-card-selected' : ''}`}>
       <div className="saved-card-copy">
         <strong>{session.name}</strong>
-        <p>{session.host}</p>
       </div>
       <div className="saved-card-main">
         <dl className="saved-card-meta">

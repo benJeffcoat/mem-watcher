@@ -627,6 +627,34 @@ input:focus {
   padding-bottom: 12px;
 }
 
+.memory-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-trend-inline {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memory-trend-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.compact-history-chart {
+  margin-top: 0;
+}
+
+.compact-history-empty {
+  min-height: 118px;
+  border-radius: 14px;
+}
+
 .history-chart {
   width: 100%;
   height: auto;
@@ -636,6 +664,12 @@ input:focus {
 .history-grid {
   stroke: rgba(255, 255, 255, 0.12);
   stroke-dasharray: 6 8;
+}
+
+.history-axis-label {
+  fill: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 
 .history-line {
@@ -666,7 +700,7 @@ input:focus {
 .table-wrap {
   overflow: auto;
   margin-top: 12px;
-  max-height: 310px;
+  max-height: 520px;
 }
 
 table {

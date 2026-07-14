@@ -4,7 +4,6 @@ import { ActiveSessionCard } from '../widgets/ActiveSessionCard'
 import { PageHeader } from '../widgets/PageHeader'
 import { SavedSessionCard } from '../widgets/SavedSessionCard'
 import { SessionForm } from '../widgets/SessionForm'
-import { StatChip } from '../widgets/StatChip'
 
 type AppState = ReturnType<typeof useMemWatcherState>
 
@@ -18,12 +17,6 @@ export function SessionsPage({ state }: { state: AppState }) {
     <>
       <PageHeader
         title="Sessions"
-        actions={
-          <>
-            <StatChip label="Saved" value={state.summary.savedCount} />
-            <StatChip label="Live" value={state.summary.activeCount} />
-          </>
-        }
       />
 
       <section className="sessions-layout">

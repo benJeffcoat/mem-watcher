@@ -1,7 +1,6 @@
 import type { useMemWatcherState } from '../state/useMemWatcherState'
 import { ActiveSessionCard } from '../widgets/ActiveSessionCard'
 import { PageHeader } from '../widgets/PageHeader'
-import { StatChip } from '../widgets/StatChip'
 
 type AppState = ReturnType<typeof useMemWatcherState>
 
@@ -10,13 +9,6 @@ export function DashboardPage({ state }: { state: AppState }) {
     <>
       <PageHeader
         title="Active sessions"
-        actions={
-          <>
-            <StatChip label="Active" value={state.summary.activeCount} />
-            <StatChip label="Connected" value={state.summary.connectedCount} />
-            <StatChip label="Saved" value={state.summary.savedCount} />
-          </>
-        }
       />
 
       <section className="session-grid">

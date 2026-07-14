@@ -2,10 +2,9 @@ import type { useMemWatcherState } from '../state/useMemWatcherState'
 import type { PieSegment } from '../types/monitor'
 import { formatBytes } from '../utils/formatters'
 import { DonutChart } from '../widgets/DonutChart'
-import { HistoryChart } from '../widgets/HistoryChart'
+import { MemoryOverviewCard } from '../widgets/MemoryOverviewCard'
 import { PageHeader } from '../widgets/PageHeader'
 import { ProcessTable } from '../widgets/ProcessTable'
-import { StatChip } from '../widgets/StatChip'
 
 type AppState = ReturnType<typeof useMemWatcherState>
 
@@ -72,30 +71,20 @@ export function PerformancePage({ state }: { state: AppState }) {
     <>
       <PageHeader
         title={session.name}
-        actions={
-          <>
-            <StatChip label="Prompt" value={session.snapshot.prompt || 'Unknown'} />
-            <StatChip
-              label="RAM"
-              value={session.snapshot.memory ? formatBytes(session.snapshot.memory.total_bytes) : 'No sample'}
-            />
-            <StatChip label="Processes" value={session.snapshot.processes.length} />
-          </>
-        }
       />
 
       <section className="dashboard-grid">
-        <DonutChart
+        <MemoryOverviewCard
           title="Overall RAM"
           totalLabel={session.snapshot.memory ? formatBytes(session.snapshot.memory.total_bytes) : 'No sample'}
           segments={ramSegments}
+          history={session.snapshot.history}
         />
         <DonutChart
           title="Process RSS"
           totalLabel={`${session.snapshot.processes.length} processes`}
           segments={processSegments}
         />
-        <HistoryChart history={session.snapshot.history} />
         <ProcessTable processes={session.snapshot.processes} />
       </section>
     </>
