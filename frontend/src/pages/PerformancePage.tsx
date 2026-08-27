@@ -55,7 +55,7 @@ export function PerformancePage({ state }: { state: AppState }) {
           label: 'Idle CPU',
           value: session.snapshot.cpu.idle_percent,
           color: '#dbeafe',
-          meta: '',
+          meta: `${session.snapshot.cpu.idle_percent.toFixed(1)}% idle`,
         },
       ]
     : []
