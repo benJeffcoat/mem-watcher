@@ -43,6 +43,23 @@ export function PerformancePage({ state }: { state: AppState }) {
       ]
     : []
 
+  const cpuSegments: PieSegment[] = session.snapshot.cpu
+    ? [
+        {
+          label: 'Used CPU',
+          value: session.snapshot.cpu.used_percent,
+          color: '#0284c7',
+          meta: `Usr ${session.snapshot.cpu.user_percent.toFixed(1)}% · Sys ${session.snapshot.cpu.sys_percent.toFixed(1)}%`,
+        },
+        {
+          label: 'Idle CPU',
+          value: session.snapshot.cpu.idle_percent,
+          color: '#dbeafe',
+          meta: '',
+        },
+      ]
+    : []
+
   const processSegments: PieSegment[] = !session.snapshot.processes.length
     ? []
     : (() => {
@@ -79,6 +96,17 @@ export function PerformancePage({ state }: { state: AppState }) {
           totalLabel={session.snapshot.memory ? formatBytes(session.snapshot.memory.total_bytes) : 'No sample'}
           segments={ramSegments}
           history={session.snapshot.history}
+        />
+        <MemoryOverviewCard
+          title="CPU Load"
+          totalLabel={
+            session.snapshot.cpu
+              ? `Load avg ${session.snapshot.cpu.load_1m.toFixed(2)} / ${session.snapshot.cpu.load_5m.toFixed(2)} / ${session.snapshot.cpu.load_15m.toFixed(2)}`
+              : 'No sample'
+          }
+          segments={cpuSegments}
+          history={session.snapshot.cpu_history}
+          trendTitle="CPU Trend"
         />
         <DonutChart
           title="Process RSS"

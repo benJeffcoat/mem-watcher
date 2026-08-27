@@ -1,4 +1,4 @@
-import type { HistoryPoint, PieSegment } from '../types/monitor'
+import type { PieSegment, UtilizationPoint } from '../types/monitor'
 import { formatTimestamp } from '../utils/formatters'
 
 function buildArcPath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
@@ -17,11 +17,13 @@ export function MemoryOverviewCard({
   totalLabel,
   segments,
   history,
+  trendTitle = 'Memory Trend',
 }: {
   title: string
   totalLabel: string
   segments: PieSegment[]
-  history: HistoryPoint[]
+  history: UtilizationPoint[]
+  trendTitle?: string
 }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0)
 
@@ -86,7 +88,7 @@ export function MemoryOverviewCard({
                     <strong>{segment.label}</strong>
                     <span>{percentage.toFixed(1)}%</span>
                   </div>
-                  <p>{segment.meta}</p>
+                  {segment.meta ? <p>{segment.meta}</p> : null}
                 </div>
               </div>
             )
@@ -95,7 +97,7 @@ export function MemoryOverviewCard({
       </div>
       <div className="memory-trend-inline">
         <div className="memory-trend-inline-head">
-          <p className="eyebrow">Memory Trend</p>
+          <p className="eyebrow">{trendTitle}</p>
           <strong>{history.length} samples</strong>
         </div>
         {showTrend ? (

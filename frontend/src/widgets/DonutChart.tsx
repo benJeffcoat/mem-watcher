@@ -71,7 +71,7 @@ export function DonutChart({
                     <strong>{segment.label}</strong>
                     <span>{percentage.toFixed(1)}%</span>
                   </div>
-                  <p>{segment.meta}</p>
+                  {segment.meta ? <p>{segment.meta}</p> : null}
                 </div>
               </div>
             )
