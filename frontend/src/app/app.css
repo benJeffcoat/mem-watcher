@@ -632,6 +632,28 @@ input:focus {
   flex-direction: column;
 }
 
+.memory-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.memory-meta-item {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.42);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.memory-meta-item .eyebrow {
+  margin-bottom: 4px;
+}
+
+.memory-meta-item strong {
+  font-size: 0.9rem;
+}
+
 .memory-trend-inline {
   margin-top: 8px;
   display: flex;
@@ -644,6 +666,26 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.trend-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.trend-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
 }
 
 .compact-history-chart {
@@ -680,8 +722,16 @@ input:focus {
   stroke-linecap: round;
 }
 
+.history-line-secondary {
+  stroke-width: 3;
+}
+
 .history-dot {
   fill: var(--accent-strong);
+}
+
+.history-dot-secondary {
+  opacity: 0.95;
 }
 
 .history-footer {
@@ -789,6 +839,7 @@ th {
   }
 
   .chart-shell,
+  .memory-meta-grid,
   .field-row,
   .session-form-actions,
   .session-card-actions {

@@ -42,11 +42,17 @@ export type CPUSnapshot = {
   load_1m: number
   load_5m: number
   load_15m: number
+  mem_used_bytes: number | null
+  mem_free_bytes: number | null
+  mem_shared_bytes: number | null
+  mem_buffer_bytes: number | null
+  mem_cached_bytes: number | null
 }
 
 export type UtilizationPoint = {
   timestamp: string
   usedPercent: number
+  memUsedPercent?: number | null
 }
 
 export type HistoryPoint = {

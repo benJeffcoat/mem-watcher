@@ -28,6 +28,10 @@ CPULOAD_LOADAVG_RE = re.compile(
     r"Load average:\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)",
     re.IGNORECASE,
 )
+CPULOAD_MEM_RE = re.compile(
+    r"Mem:\s+(\d+)K\s+used,\s+(\d+)K\s+free(?:,\s+(\d+)K\s+shrd,\s+(\d+)K\s+buff,\s+(\d+)K\s+cached)?",
+    re.IGNORECASE,
+)
 
 
 class ConnectRequest(BaseModel):
@@ -62,6 +66,11 @@ class CPUSnapshot(BaseModel):
     load_1m: float
     load_5m: float
     load_15m: float
+    mem_used_bytes: int | None = None
+    mem_free_bytes: int | None = None
+    mem_shared_bytes: int | None = None
+    mem_buffer_bytes: int | None = None
+    mem_cached_bytes: int | None = None
 
 
 class DeviceSnapshot(BaseModel):
@@ -140,6 +149,13 @@ def _parse_cpuload(output: str) -> CPUSnapshot:
     user_percent = float(cpu_match.group(1))
     sys_percent = float(cpu_match.group(2))
     idle_percent = float(cpu_match.group(3))
+    mem_match = CPULOAD_MEM_RE.search(output)
+
+    mem_used_bytes = int(mem_match.group(1)) * 1024 if mem_match else None
+    mem_free_bytes = int(mem_match.group(2)) * 1024 if mem_match else None
+    mem_shared_bytes = int(mem_match.group(3)) * 1024 if mem_match and mem_match.group(3) else None
+    mem_buffer_bytes = int(mem_match.group(4)) * 1024 if mem_match and mem_match.group(4) else None
+    mem_cached_bytes = int(mem_match.group(5)) * 1024 if mem_match and mem_match.group(5) else None
 
     return CPUSnapshot(
         used_percent=max(0.0, min(100.0, 100.0 - idle_percent)),
@@ -149,6 +165,11 @@ def _parse_cpuload(output: str) -> CPUSnapshot:
         load_1m=float(load_avg_match.group(1)),
         load_5m=float(load_avg_match.group(2)),
         load_15m=float(load_avg_match.group(3)),
+        mem_used_bytes=mem_used_bytes,
+        mem_free_bytes=mem_free_bytes,
+        mem_shared_bytes=mem_shared_bytes,
+        mem_buffer_bytes=mem_buffer_bytes,
+        mem_cached_bytes=mem_cached_bytes,
     )
 
 
@@ -346,10 +367,16 @@ class MonitorSession:
                     }
                 )
             if self.cpu is not None:
+                mem_used_percent = None
+                if self.cpu.mem_used_bytes is not None and self.cpu.mem_free_bytes is not None:
+                    mem_total = self.cpu.mem_used_bytes + self.cpu.mem_free_bytes
+                    if mem_total > 0:
+                        mem_used_percent = (self.cpu.mem_used_bytes / mem_total) * 100.0
                 self.cpu_history.append(
                     {
                         "timestamp": self.last_snapshot_at,
                         "usedPercent": self.cpu.used_percent,
+                        "memUsedPercent": mem_used_percent,
                     }
                 )
         except Exception as exc:

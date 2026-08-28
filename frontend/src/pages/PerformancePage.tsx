@@ -60,6 +60,50 @@ export function PerformancePage({ state }: { state: AppState }) {
       ]
     : []
 
+  const cpuMemoryHistory = session.snapshot.cpu_history
+    .filter((point): point is typeof point & { memUsedPercent: number } => typeof point.memUsedPercent === 'number')
+    .map((point) => ({
+      timestamp: point.timestamp,
+      usedPercent: point.memUsedPercent,
+    }))
+
+  const cpuMemoryDetails = session.snapshot.cpu
+    ? (() => {
+        const memUsed = session.snapshot.cpu.mem_used_bytes
+        const memFree = session.snapshot.cpu.mem_free_bytes
+        if (memUsed == null || memFree == null) {
+          return []
+        }
+
+        const total = memUsed + memFree
+        const usedPercent = total > 0 ? (memUsed / total) * 100 : 0
+        const optionalParts = [
+          session.snapshot.cpu.mem_cached_bytes == null ? null : `Cached ${formatBytes(session.snapshot.cpu.mem_cached_bytes)}`,
+          session.snapshot.cpu.mem_shared_bytes == null ? null : `Shared ${formatBytes(session.snapshot.cpu.mem_shared_bytes)}`,
+          session.snapshot.cpu.mem_buffer_bytes == null ? null : `Buff ${formatBytes(session.snapshot.cpu.mem_buffer_bytes)}`,
+        ].filter((value): value is string => Boolean(value))
+
+        return [
+          {
+            label: 'CPULoad Memory',
+            value: `${formatBytes(memUsed)} used / ${formatBytes(memFree)} free`,
+          },
+          {
+            label: 'CPULoad Usage',
+            value: `${usedPercent.toFixed(1)}% used`,
+          },
+          ...(optionalParts.length
+            ? [
+                {
+                  label: 'Cache, Shared, Buffer',
+                  value: optionalParts.join(' | '),
+                },
+              ]
+            : []),
+        ]
+      })()
+    : []
+
   const processSegments: PieSegment[] = !session.snapshot.processes.length
     ? []
     : (() => {
@@ -106,7 +150,14 @@ export function PerformancePage({ state }: { state: AppState }) {
           }
           segments={cpuSegments}
           history={session.snapshot.cpu_history}
+          secondaryHistory={cpuMemoryHistory}
+          secondaryColor="#f97316"
+          trendLegend={[
+            { label: 'CPU used', color: '#4aa3ff' },
+            { label: 'Memory used', color: '#f97316' },
+          ]}
           trendTitle="CPU Trend"
+          details={cpuMemoryDetails}
         />
         <DonutChart
           title="Process RSS"
