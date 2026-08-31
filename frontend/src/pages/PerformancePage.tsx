@@ -150,6 +150,7 @@ export function PerformancePage({ state }: { state: AppState }) {
               ? `Load avg ${session.snapshot.cpu.load_1m.toFixed(2)} / ${session.snapshot.cpu.load_5m.toFixed(2)} / ${session.snapshot.cpu.load_15m.toFixed(2)}`
               : 'No sample'
           }
+          totalHelpText="Load average shows the average number of processes using or waiting for CPU over the last 1, 5, and 15 minutes. A value near the CPU core count means the processor is close to fully busy."
           segments={cpuSegments}
           history={session.snapshot.cpu_history}
           secondaryHistory={cpuMemoryHistory}

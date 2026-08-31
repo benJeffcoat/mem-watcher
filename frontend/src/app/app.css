@@ -269,6 +269,15 @@
   gap: 16px;
 }
 
+.chart-total-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  text-align: right;
+}
+
 .eyebrow {
   margin: 0;
   font-size: 0.8rem;

@@ -27,6 +27,7 @@ function buildArcPath(cx: number, cy: number, radius: number, startAngle: number
 export function MemoryOverviewCard({
   title,
   totalLabel,
+  totalHelpText,
   segments,
   history,
   trendTitle = 'Memory Trend',
@@ -37,6 +38,7 @@ export function MemoryOverviewCard({
 }: {
   title: string
   totalLabel: string
+  totalHelpText?: string
   segments: PieSegment[]
   history: UtilizationPoint[]
   trendTitle?: string
@@ -87,7 +89,19 @@ export function MemoryOverviewCard({
     <div className="chart-card memory-card">
       <div className="chart-header">
         <p className="eyebrow">{title}</p>
-        <strong>{totalLabel}</strong>
+        <div className="chart-total-label">
+          <strong>{totalLabel}</strong>
+          {totalHelpText ? (
+            <span className="memory-info">
+              <button className="memory-info-button" type="button" aria-label={`${title} load average details`}>
+                <InfoIcon className="memory-info-icon" />
+              </button>
+              <span className="memory-info-popover" role="tooltip">
+                {totalHelpText}
+              </span>
+            </span>
+          ) : null}
+        </div>
       </div>
       <div className="chart-shell">
         <svg viewBox="0 0 220 220" className="donut-chart" aria-hidden="true">
