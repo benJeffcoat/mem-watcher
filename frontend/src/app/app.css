@@ -646,8 +646,71 @@ input:focus {
   padding: 10px 12px;
 }
 
-.memory-meta-item .eyebrow {
+.memory-meta-label-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 4px;
+}
+
+.memory-info {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.memory-info-button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #9bd0ff;
+  cursor: help;
+  padding: 0;
+}
+
+.memory-info-button:hover,
+.memory-info-button:focus-visible {
+  background: transparent;
+  color: #ffffff;
+  outline: none;
+}
+
+.memory-info-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.memory-info-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 5;
+  width: min(280px, calc(100vw - 48px));
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: #202630;
+  color: var(--muted-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.memory-info:hover .memory-info-popover,
+.memory-info:focus-within .memory-info-popover {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .memory-meta-item strong {

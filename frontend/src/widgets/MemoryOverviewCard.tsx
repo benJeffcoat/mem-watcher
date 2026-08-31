@@ -1,9 +1,11 @@
 import type { PieSegment, UtilizationPoint } from '../types/monitor'
 import { formatTimestamp } from '../utils/formatters'
+import { InfoIcon } from './Icons'
 
 type DetailRow = {
   label: string
   value: string
+  helpText?: string
 }
 
 type TrendLegendItem = {
@@ -124,7 +126,19 @@ export function MemoryOverviewCard({
         <div className="memory-meta-grid">
           {details.map((item) => (
             <div className="memory-meta-item" key={item.label}>
-              <p className="eyebrow">{item.label}</p>
+              <div className="memory-meta-label-row">
+                <p className="eyebrow">{item.label}</p>
+                {item.helpText ? (
+                  <span className="memory-info">
+                    <button className="memory-info-button" type="button" aria-label={`${item.label} details`}>
+                      <InfoIcon className="memory-info-icon" />
+                    </button>
+                    <span className="memory-info-popover" role="tooltip">
+                      {item.helpText}
+                    </span>
+                  </span>
+                ) : null}
+              </div>
               <strong>{item.value}</strong>
             </div>
           ))}

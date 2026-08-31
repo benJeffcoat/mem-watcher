@@ -97,6 +97,8 @@ export function PerformancePage({ state }: { state: AppState }) {
                 {
                   label: 'Cache, Shared, Buffer',
                   value: optionalParts.join(' | '),
+                  helpText:
+                    'Cached memory stores recently used files so they can be reopened quickly. Shared memory is used by more than one process. Buffer memory holds temporary file-system and device I/O data while Linux moves it between applications and hardware.',
                 },
               ]
             : []),

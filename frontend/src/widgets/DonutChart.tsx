@@ -33,7 +33,15 @@ export function DonutChart({
     )
   }
 
-  let runningAngle = 0
+  const donutSegments = segments.reduce<Array<{ segment: PieSegment; startAngle: number; endAngle: number }>>(
+    (acc, segment) => {
+      const startAngle = acc.length ? acc[acc.length - 1].endAngle : 0
+      const endAngle = startAngle + (segment.value / total) * 360
+      acc.push({ segment, startAngle, endAngle })
+      return acc
+    },
+    [],
+  )
 
   return (
     <div className="chart-card">
@@ -44,11 +52,7 @@ export function DonutChart({
       <div className="chart-shell">
         <svg viewBox="0 0 220 220" className="donut-chart" aria-hidden="true">
           <circle cx="110" cy="110" r="78" className="donut-track" />
-          {segments.map((segment) => {
-            const percentage = segment.value / total
-            const startAngle = runningAngle
-            const endAngle = runningAngle + percentage * 360
-            runningAngle = endAngle
+          {donutSegments.map(({ segment, startAngle, endAngle }) => {
             return (
               <path
                 key={segment.label}
