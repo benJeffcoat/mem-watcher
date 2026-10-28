@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import re
-from typing import Any
+import sqlite3
+from pathlib import Path
+from typing import Any, Iterator
 from uuid import uuid4
 
 import asyncssh
@@ -20,6 +22,10 @@ RAMFREE_PERCENT_RE = re.compile(r"(\d+)\s+percent of memory in use", re.IGNORECA
 RAMFREE_TOTAL_RE = re.compile(r"(\d+)\s+total bytes of physical memory", re.IGNORECASE)
 RAMFREE_USED_RE = re.compile(r"(\d+)\s+bytes actually used", re.IGNORECASE)
 RAMFREE_FREE_RE = re.compile(r"(\d+)\s+bytes free", re.IGNORECASE)
+LOG_LINE_RE = re.compile(
+    r"^\s*(?:(?P<line_number>\d+)\.\s+)?(?P<level>[A-Za-z]+):\s+"
+    r"(?P<source>.+?)\s+#\s+(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+#\s*(?P<message>.*)$"
+)
 
 
 class ConnectRequest(BaseModel):
@@ -27,7 +33,50 @@ class ConnectRequest(BaseModel):
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
     port: int = Field(default=22, ge=1, le=65535)
+    name: str = ""
+    savedSessionId: str | None = None
 
+
+class SavedSession(BaseModel):
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    username: str = Field(min_length=1)
+    port: int = Field(default=22, ge=1, le=65535)
+    lastUsedAt: str | None = None
+
+class SavedSessionStore:
+    """Persist connection profiles only; SSH passwords remain in memory."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        with self._connect() as db:
+            db.execute("CREATE TABLE IF NOT EXISTS saved_sessions (id TEXT PRIMARY KEY, profile TEXT NOT NULL)")
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        db = sqlite3.connect(self.path)
+        try:
+            with db:
+                yield db
+        finally:
+            db.close()
+
+    def list(self) -> list[SavedSession]:
+        with self._connect() as db:
+            rows = db.execute("SELECT profile FROM saved_sessions ORDER BY rowid DESC").fetchall()
+        return [SavedSession.model_validate_json(row[0]) for row in rows]
+
+    def save(self, profile: SavedSession, *, overwrite: bool = True) -> None:
+        # Migration must not overwrite a newer profile already saved by another browser.
+        statement = "INSERT OR REPLACE" if overwrite else "INSERT OR IGNORE"
+        with self._connect() as db:
+            db.execute(f"{statement} INTO saved_sessions (id, profile) VALUES (?, ?)",
+                       (profile.id, profile.model_dump_json()))
+
+    def delete(self, profile_id: str) -> None:
+        with self._connect() as db:
+            db.execute("DELETE FROM saved_sessions WHERE id = ?", (profile_id,))
 
 class ProcessInfo(BaseModel):
     pid: int
@@ -61,6 +110,22 @@ class DeviceSnapshot(BaseModel):
 class SessionResponse(BaseModel):
     session_id: str
     snapshot: DeviceSnapshot
+
+
+class LogEntry(BaseModel):
+    line_number: int | None
+    level: str
+    source: str
+    timestamp: str | None
+    message: str
+    raw: str
+
+
+class LogResponse(BaseModel):
+    command: str
+    fetched_at: str
+    entries: list[LogEntry]
+    raw: str
 
 
 def _now_iso() -> str:
@@ -209,6 +274,56 @@ def _parse_uptime(output: str) -> str | None:
     return None
 
 
+def _strip_command_echo(output: str, command: str) -> str:
+    lines = output.replace("\r", "").split("\n")
+    filtered: list[str] = []
+    skipped_echo = False
+    normalized_command = command.strip().lower()
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if PROMPT_RE.match(stripped):
+            continue
+        if not skipped_echo and stripped.lower() == normalized_command:
+            skipped_echo = True
+            continue
+        filtered.append(raw_line)
+
+    return "\n".join(filtered).strip()
+
+
+def _parse_log_entries(output: str) -> list[LogEntry]:
+    entries: list[LogEntry] = []
+    for raw_line in output.replace("\r", "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = LOG_LINE_RE.match(line)
+        if match:
+            entries.append(
+                LogEntry(
+                    line_number=int(match.group("line_number")) if match.group("line_number") else None,
+                    level=match.group("level"),
+                    source=match.group("source").strip(),
+                    timestamp=match.group("timestamp"),
+                    message=match.group("message").strip(),
+                    raw=line,
+                )
+            )
+            continue
+        entries.append(
+            LogEntry(
+                line_number=None,
+                level="Info",
+                source="console",
+                timestamp=None,
+                message=line,
+                raw=line,
+            )
+        )
+    return entries
+
+
 @dataclass
 class MonitorSession:
     session_id: str
@@ -225,7 +340,7 @@ class MonitorSession:
     memory: MemorySnapshot | None = None
     processes: list[ProcessInfo] = field(default_factory=list)
     uptime: str | None = None
-    history: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=24))
+    history: deque[dict[str, Any]] = field(default_factory=deque)
 
     async def start(self) -> None:
         await self._connect()
@@ -347,9 +462,29 @@ class SessionStore:
     async def create(self, request: ConnectRequest) -> MonitorSession:
         session_id = uuid4().hex
         session = MonitorSession(session_id=session_id, request=request)
-        await session.start()
+        try:
+            await session.start()
+        except Exception:
+            await session.close()
+            raise
         self._sessions[session_id] = session
         return session
+
+    def list(self) -> list[dict[str, Any]]:
+        # Never expose the SSH request/password to browser clients.
+        return [
+            {
+                "sessionId": session.session_id,
+                "savedSessionId": session.request.savedSessionId,
+                "name": session.request.name or session.request.host,
+                "host": session.request.host,
+                "username": session.request.username,
+                "port": session.request.port,
+                "snapshot": session.snapshot(),
+                "error": session.last_error,
+            }
+            for session in self._sessions.values()
+        ]
 
     def get(self, session_id: str) -> MonitorSession:
         session = self._sessions.get(session_id)
@@ -367,6 +502,7 @@ class SessionStore:
             await self.delete(session_id)
 
 
+profiles = SavedSessionStore(Path(__file__).with_name("sessions.sqlite3"))
 store = SessionStore()
 app = FastAPI(title="Crestron Memory Watcher")
 app.add_middleware(
@@ -388,12 +524,44 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/saved-sessions", response_model=list[SavedSession])
+async def list_saved_sessions() -> list[SavedSession]:
+    return profiles.list()
+
+@app.put("/api/saved-sessions/{profile_id}", response_model=SavedSession)
+async def save_session_profile(profile_id: str, profile: SavedSession) -> SavedSession:
+    if profile.id != profile_id:
+        raise HTTPException(status_code=400, detail="Profile ID does not match the URL.")
+    profiles.save(profile)
+    return profile
+
+@app.post("/api/saved-sessions/import", response_model=list[SavedSession])
+async def import_saved_sessions(saved: list[SavedSession]) -> list[SavedSession]:
+    for profile in saved:
+        profiles.save(profile, overwrite=False)
+    return profiles.list()
+
+@app.delete("/api/saved-sessions/{profile_id}")
+async def delete_session_profile(profile_id: str) -> dict[str, bool]:
+    profiles.delete(profile_id)
+    return {"deleted": True}
+
+@app.get("/api/sessions")
+async def list_sessions() -> list[dict[str, Any]]:
+    return store.list()
+
 @app.post("/api/sessions", response_model=SessionResponse)
 async def create_session(request: ConnectRequest) -> SessionResponse:
     try:
         session = await store.create(request)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if request.savedSessionId:
+        for profile in profiles.list():
+            if profile.id == request.savedSessionId:
+                profile.lastUsedAt = _now_iso()
+                profiles.save(profile)
+                break
     return SessionResponse(session_id=session.session_id, snapshot=session.snapshot())
 
 
@@ -404,6 +572,31 @@ async def get_session_snapshot(session_id: str) -> DeviceSnapshot:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Session not found.") from exc
     return session.snapshot()
+
+
+@app.get("/api/sessions/{session_id}/logs", response_model=LogResponse)
+async def get_session_logs(session_id: str, command: str = "ERRlog") -> LogResponse:
+    try:
+        session = store.get(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Session not found.") from exc
+
+    requested_command = command.strip()
+    if not requested_command:
+        raise HTTPException(status_code=400, detail="Log command is required.")
+
+    try:
+        raw_output = await session._run_command(requested_command)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cleaned_output = _strip_command_echo(raw_output, requested_command)
+    return LogResponse(
+        command=requested_command,
+        fetched_at=_now_iso(),
+        entries=_parse_log_entries(cleaned_output),
+        raw=cleaned_output,
+    )
 
 
 @app.delete("/api/sessions/{session_id}")

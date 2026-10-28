@@ -1,4 +1,4 @@
-export type PageKey = 'dashboard' | 'sessions' | 'performance'
+export type PageKey = 'dashboard' | 'sessions' | 'performance' | 'logs'
 
 export type ConnectionDraft = {
   name: string
@@ -55,6 +55,22 @@ export type DeviceSnapshot = {
 export type SessionResponse = {
   session_id: string
   snapshot: DeviceSnapshot
+}
+
+export type LogEntry = {
+  line_number: number | null
+  level: string
+  source: string
+  timestamp: string | null
+  message: string
+  raw: string
+}
+
+export type LogResponse = {
+  command: string
+  fetched_at: string
+  entries: LogEntry[]
+  raw: string
 }
 
 export type ActiveSession = {

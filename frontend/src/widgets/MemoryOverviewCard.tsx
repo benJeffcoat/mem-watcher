@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import type { HistoryPoint, PieSegment } from '../types/monitor'
 import { formatTimestamp } from '../utils/formatters'
 
@@ -12,6 +13,39 @@ function buildArcPath(cx: number, cy: number, radius: number, startAngle: number
   return `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endX} ${endY}`
 }
 
+function sampleHistory(history: HistoryPoint[], maxPoints: number): HistoryPoint[] {
+  if (history.length <= maxPoints) {
+    return history
+  }
+  const sampled: HistoryPoint[] = []
+  const lastIndex = history.length - 1
+  for (let index = 0; index < maxPoints; index += 1) {
+    const sourceIndex = Math.round((index / (maxPoints - 1)) * lastIndex)
+    sampled.push(history[sourceIndex])
+  }
+  return sampled
+}
+
+function buildSmoothPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) {
+    return ''
+  }
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y}`
+  }
+  let path = `M ${points[0].x} ${points[0].y}`
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const current = points[index]
+    const next = points[index + 1]
+    const midX = (current.x + next.x) / 2
+    const midY = (current.y + next.y) / 2
+    path += ` Q ${current.x} ${current.y} ${midX} ${midY}`
+  }
+  const last = points[points.length - 1]
+  path += ` T ${last.x} ${last.y}`
+  return path
+}
+
 export function MemoryOverviewCard({
   title,
   totalLabel,
@@ -24,6 +58,9 @@ export function MemoryOverviewCard({
   history: HistoryPoint[]
 }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0)
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+
+  const sampledHistory = useMemo(() => sampleHistory(history, 100), [history])
 
   if (total <= 0) {
     return (
@@ -37,18 +74,20 @@ export function MemoryOverviewCard({
   }
 
   let runningAngle = 0
-  const showTrend = history.length >= 2
+  const showTrend = sampledHistory.length >= 2
   const width = 560
   const height = 118
   const left = 48
   const top = 14
   const chartWidth = width - left * 2
   const chartHeight = height - top * 2
-  const points = history.map((point, index) => {
-    const x = left + (index / Math.max(history.length - 1, 1)) * chartWidth
-    const y = top + ((100 - point.usedPercent) / 100) * chartHeight
-    return `${x},${y}`
-  })
+  const chartPoints = sampledHistory.map((point, index) => ({
+    x: left + (index / Math.max(sampledHistory.length - 1, 1)) * chartWidth,
+    y: top + ((100 - point.usedPercent) / 100) * chartHeight,
+    point,
+  }))
+  const hoveredPoint = hoveredIndex === null ? null : chartPoints[hoveredIndex]
+  const smoothPath = buildSmoothPath(chartPoints)
 
   return (
     <div className="chart-card memory-card">
@@ -96,11 +135,15 @@ export function MemoryOverviewCard({
       <div className="memory-trend-inline">
         <div className="memory-trend-inline-head">
           <p className="eyebrow">Memory Trend</p>
-          <strong>{history.length} samples</strong>
+          <strong>{sampledHistory.length} samples</strong>
         </div>
         {showTrend ? (
           <>
-            <svg viewBox={`0 0 ${width} ${height}`} className="history-chart compact-history-chart" aria-hidden="true">
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              className="history-chart compact-history-chart"
+              aria-label="Memory trend"
+            >
               <rect x="0" y="0" width={width} height={height} rx="14" className="history-bg" />
               <text x="10" y={top + 4} className="history-axis-label">
                 100%
@@ -126,15 +169,48 @@ export function MemoryOverviewCard({
                 y2={top + chartHeight}
                 className="history-grid"
               />
-              <polyline points={points.join(' ')} className="history-line" />
-              {points.map((point, index) => {
-                const [x, y] = point.split(',')
-                return <circle key={history[index].timestamp} cx={x} cy={y} r="3.4" className="history-dot" />
-              })}
+              <path d={smoothPath} className="history-line" />
+              {hoveredPoint ? (
+                <>
+                  <line
+                    x1={hoveredPoint.x}
+                    x2={hoveredPoint.x}
+                    y1={top}
+                    y2={top + chartHeight}
+                    className="history-hover-line"
+                  />
+                  <circle cx={hoveredPoint.x} cy={hoveredPoint.y} r="4" className="history-hover-dot" />
+                  <g transform={`translate(${Math.min(hoveredPoint.x + 10, width - 150)}, ${Math.max(hoveredPoint.y - 42, 8)})`}>
+                    <rect width="140" height="34" rx="8" className="history-tooltip-bg" />
+                    <text x="10" y="14" className="history-tooltip-value">
+                      {hoveredPoint.point.usedPercent.toFixed(1)}% RAM
+                    </text>
+                    <text x="10" y="27" className="history-tooltip-time">
+                      {formatTimestamp(hoveredPoint.point.timestamp)}
+                    </text>
+                  </g>
+                </>
+              ) : null}
+              {chartPoints.map((point, index) => (
+                <rect
+                  key={point.point.timestamp}
+                  x={index === 0 ? left : (chartPoints[index - 1].x + point.x) / 2}
+                  y={top}
+                  width={
+                    index === chartPoints.length - 1
+                      ? width - left - (index === 0 ? left : (chartPoints[index - 1].x + point.x) / 2)
+                      : (point.x + chartPoints[index + 1].x) / 2 - (index === 0 ? left : (chartPoints[index - 1].x + point.x) / 2)
+                  }
+                  height={chartHeight}
+                  className="history-hover-target"
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                />
+              ))}
             </svg>
             <div className="history-footer">
-              <span>{formatTimestamp(history[0]?.timestamp ?? null)}</span>
-              <span>{formatTimestamp(history[history.length - 1]?.timestamp ?? null)}</span>
+              <span>{formatTimestamp(sampledHistory[0]?.timestamp ?? null)}</span>
+              <span>{formatTimestamp(sampledHistory[sampledHistory.length - 1]?.timestamp ?? null)}</span>
             </div>
           </>
         ) : (

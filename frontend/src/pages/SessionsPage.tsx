@@ -24,18 +24,19 @@ export function SessionsPage({ state }: { state: AppState }) {
           draft={state.draft}
           isConnecting={state.isConnecting}
           canSaveDraft={state.canSaveDraft}
-          isEditingSavedSession={Boolean(state.editingSavedSessionId)}
+          builderMode={state.builderMode}
           error={state.globalError}
           onChange={state.setDraft}
           onConnect={handleConnect}
           onSave={state.saveDraftSession}
+          onCancelEdit={state.cancelEditSavedSession}
         />
 
         <div className="sessions-columns">
           <section className="panel-card">
             <div className="card-head">
               <div>
-                <p className="eyebrow">Saved Profiles</p>
+                <p className="eyebrow">Saved Sessions</p>
               </div>
             </div>
             <div className="stack-list">
@@ -58,7 +59,7 @@ export function SessionsPage({ state }: { state: AppState }) {
           <section className="panel-card">
             <div className="card-head">
               <div>
-                <p className="eyebrow">Active Pollers</p>
+                <p className="eyebrow">Active Sessions</p>
               </div>
             </div>
             <div className="stack-list">

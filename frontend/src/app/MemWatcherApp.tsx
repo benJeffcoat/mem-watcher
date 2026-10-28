@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { AppShell } from '../layouts/AppShell'
 import { DashboardPage } from '../pages/DashboardPage'
+import { LogsPage } from '../pages/LogsPage'
 import { PerformancePage } from '../pages/PerformancePage'
 import { SessionsPage } from '../pages/SessionsPage'
 import { useMemWatcherState } from '../state/useMemWatcherState'
@@ -15,6 +16,9 @@ export function MemWatcherApp() {
     }
     if (state.page === 'performance') {
       return <PerformancePage state={state} />
+    }
+    if (state.page === 'logs') {
+      return <LogsPage state={state} />
     }
     return <DashboardPage state={state} />
   }, [state])

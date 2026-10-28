@@ -11,6 +11,16 @@ function iconProps(className?: string) {
   }
 }
 
+export function ExportIcon({ className }: { className?: string }) {
+  return (
+    <svg {...iconProps(className)}>
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+    </svg>
+  )
+}
+
 export function MenuIcon({ className }: { className?: string }) {
   return (
     <svg {...iconProps(className)}>
@@ -49,6 +59,17 @@ export function PerformanceIcon({ className }: { className?: string }) {
       <path d="M4 19h16" />
       <path d="M7 15l3-3l3 2l4-5" />
       <path d="M17 9h2v2" />
+    </svg>
+  )
+}
+
+export function LogsIcon({ className }: { className?: string }) {
+  return (
+    <svg {...iconProps(className)}>
+      <path d="M7 4.5h10l3 3V19a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 6 19V6a1.5 1.5 0 0 1 1-1.5Z" />
+      <path d="M14 4.5V8h6" />
+      <path d="M9 12h8" />
+      <path d="M9 16h8" />
     </svg>
   )
 }
@@ -96,12 +117,29 @@ export function ViewIcon({ className }: { className?: string }) {
 export function DisconnectIcon({ className }: { className?: string }) {
   return (
     <svg {...iconProps(className)}>
-      <path d="M9 8V5" />
-      <path d="M15 8V5" />
-      <path d="M8 11h8" />
-      <path d="M9 11v3a3 3 0 0 0 3 3" />
-      <path d="M15 11v1" />
-      <path d="m4 4 16 16" />
+      <path d="M9 4.5h-2a2.5 2.5 0 0 0-2.5 2.5v10A2.5 2.5 0 0 0 7 19.5h2" />
+      <path d="M13 8.5 18 12l-5 3.5" />
+      <path d="M18 12H9" />
+    </svg>
+  )
+}
+
+export function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg {...iconProps(className)}>
+      <rect x="9" y="9" width="10" height="11" rx="1.5" />
+      <path d="M6 15H5a1 1 0 0 1-1-1V5.5A1.5 1.5 0 0 1 5.5 4H14a1 1 0 0 1 1 1v1" />
+    </svg>
+  )
+}
+
+export function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg {...iconProps(className)}>
+      <path d="M20 6v5h-5" />
+      <path d="M4 18v-5h5" />
+      <path d="M7.5 9A6.5 6.5 0 0 1 18 11" />
+      <path d="M16.5 15A6.5 6.5 0 0 1 6 13" />
     </svg>
   )
 }

@@ -1,5 +1,5 @@
 import type { useMemWatcherState } from '../state/useMemWatcherState'
-import { DashboardIcon, PerformanceIcon, SessionsIcon } from '../widgets/Icons'
+import { DashboardIcon, LogsIcon, PerformanceIcon, SessionsIcon } from '../widgets/Icons'
 
 type AppState = ReturnType<typeof useMemWatcherState>
 
@@ -7,6 +7,7 @@ const navItems = [
   { key: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
   { key: 'sessions', label: 'Sessions', icon: SessionsIcon },
   { key: 'performance', label: 'Performance', icon: PerformanceIcon },
+  { key: 'logs', label: 'Logs', icon: LogsIcon },
 ] as const
 
 export function Sidebar({ state, collapsed }: { state: AppState; collapsed: boolean }) {

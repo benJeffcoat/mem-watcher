@@ -178,3 +178,4 @@ trainingRoomMaster.py
 meetingRoom1.py
 meetingRoom2.py
 meetingRoomMaster.py
+sessions.sqlite3*

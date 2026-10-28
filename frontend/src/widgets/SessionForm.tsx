@@ -5,26 +5,33 @@ export function SessionForm({
   draft,
   isConnecting,
   canSaveDraft,
-  isEditingSavedSession,
+  builderMode,
   error,
   onChange,
   onConnect,
   onSave,
+  onCancelEdit,
 }: {
   draft: ConnectionDraft
   isConnecting: boolean
   canSaveDraft: boolean
-  isEditingSavedSession: boolean
+  builderMode: 'create' | 'connectSaved' | 'editSaved'
   error: string | null
   onChange: (next: ConnectionDraft) => void
   onConnect: (event: FormEvent<HTMLFormElement>) => void
   onSave: () => void
+  onCancelEdit: () => void
 }) {
+  const isEditingSavedSession = builderMode === 'editSaved'
+  const isConnectingSavedSession = builderMode === 'connectSaved'
+
   return (
     <form className="panel-card session-form-card" onSubmit={onConnect}>
       <div className="card-head">
         <div>
-          <p className="eyebrow">Session Builder</p>
+          <p className="eyebrow">
+            {isEditingSavedSession ? 'Edit Session' : isConnectingSavedSession ? 'Connect Session' : 'Create Session'}
+          </p>
         </div>
       </div>
       <label>
@@ -59,12 +66,34 @@ export function SessionForm({
         />
       </label>
       <div className="session-form-actions">
-        <button className="ghost-button" type="button" onClick={onSave} disabled={!canSaveDraft}>
-          {isEditingSavedSession ? 'Save Changes' : 'Save Draft'}
-        </button>
-        <button className="connect-button" type="submit" disabled={isConnecting}>
-          {isConnecting ? 'Connecting...' : 'Connect'}
-        </button>
+        {isEditingSavedSession ? (
+          <>
+            <button className="ghost-button ghost-button-danger" type="button" onClick={onCancelEdit}>
+              Cancel
+            </button>
+            <button className="connect-button" type="button" onClick={onSave} disabled={!canSaveDraft}>
+              Save
+            </button>
+          </>
+        ) : isConnectingSavedSession ? (
+          <>
+            <button className="ghost-button ghost-button-danger" type="button" onClick={onCancelEdit}>
+              Cancel
+            </button>
+            <button className="connect-button" type="submit" disabled={isConnecting}>
+              {isConnecting ? 'Connecting...' : 'Connect'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="ghost-button" type="button" onClick={onSave} disabled={!canSaveDraft}>
+              Save Draft
+            </button>
+            <button className="connect-button" type="submit" disabled={isConnecting}>
+              {isConnecting ? 'Connecting...' : 'Connect'}
+            </button>
+          </>
+        )}
       </div>
       {error ? <div className="error-banner">{error}</div> : null}
     </form>

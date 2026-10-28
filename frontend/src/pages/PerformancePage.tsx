@@ -1,10 +1,13 @@
+import { useRef, useState } from 'react'
 import type { useMemWatcherState } from '../state/useMemWatcherState'
 import type { PieSegment } from '../types/monitor'
-import { formatBytes } from '../utils/formatters'
+import { exportSnapshot } from '../utils/exportSnapshot'
+import { formatBytes, formatTimestamp } from '../utils/formatters'
 import { DonutChart } from '../widgets/DonutChart'
 import { MemoryOverviewCard } from '../widgets/MemoryOverviewCard'
 import { PageHeader } from '../widgets/PageHeader'
 import { ProcessTable } from '../widgets/ProcessTable'
+import { ExportIcon } from '../widgets/Icons'
 
 type AppState = ReturnType<typeof useMemWatcherState>
 
@@ -12,6 +15,26 @@ const processPalette = ['#0f766e', '#0ea5e9', '#f97316', '#b45309', '#334155', '
 
 export function PerformancePage({ state }: { state: AppState }) {
   const session = state.selectedSession
+  const snapshotRef = useRef<HTMLDivElement>(null)
+  const exportingRef = useRef(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+
+  async function handleExport() {
+    if (!snapshotRef.current || !session || exportingRef.current) return
+    exportingRef.current = true
+    setIsExporting(true)
+    setExportError('')
+    try {
+      await exportSnapshot(snapshotRef.current, session.name)
+    } catch (error) {
+      console.error('Snapshot export failed:', error)
+      setExportError('Could not export the image. Please try again.')
+    } finally {
+      exportingRef.current = false
+      setIsExporting(false)
+    }
+  }
 
   if (!session || !session.snapshot) {
     return (
@@ -68,10 +91,28 @@ export function PerformancePage({ state }: { state: AppState }) {
       })()
 
   return (
-    <>
+    <div className="performance-snapshot" ref={snapshotRef}>
       <PageHeader
         title={session.name}
+        actions={
+          <button
+            type="button"
+            className="ghost-button snapshot-export-button"
+            onClick={() => void handleExport()}
+            disabled={isExporting}
+            aria-busy={isExporting}
+            data-export-exclude
+          >
+            <ExportIcon className="action-icon" />
+            {isExporting ? 'Exporting…' : 'Export Image'}
+          </button>
+        }
       />
+      <p className="performance-snapshot-meta">
+        {session.host} · Sample: {formatTimestamp(session.snapshot.timestamp)}
+        {session.snapshot.uptime ? ` · Uptime: ${session.snapshot.uptime}` : ''}
+      </p>
+      {exportError ? <p className="snapshot-export-error" role="alert" data-export-exclude>{exportError}</p> : null}
 
       <section className="dashboard-grid">
         <MemoryOverviewCard
@@ -87,6 +128,6 @@ export function PerformancePage({ state }: { state: AppState }) {
         />
         <ProcessTable processes={session.snapshot.processes} />
       </section>
-    </>
+    </div>
   )
 }

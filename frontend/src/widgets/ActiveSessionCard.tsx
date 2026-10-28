@@ -1,6 +1,6 @@
 import type { ActiveSession } from '../types/monitor'
 import { formatTimestamp } from '../utils/formatters'
-import { DisconnectIcon, ViewIcon } from './Icons'
+import { DisconnectIcon } from './Icons'
 
 export function ActiveSessionCard({
   session,
@@ -14,35 +14,46 @@ export function ActiveSessionCard({
   onDisconnect: () => void
 }) {
   return (
-    <article className={`panel-card saved-card active-card ${selected ? 'session-card-selected' : ''}`}>
-      <div className="saved-card-copy">
-        <strong>{session.name}</strong>
+    <article
+      className={`panel-card dashboard-active-card ${selected ? 'session-card-selected' : ''}`}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open performance for ${session.name}`}
+    >
+      <div className="dashboard-active-head">
+        <div className="dashboard-active-title">
+          <strong>{session.name}</strong>
+        </div>
+        <div className={`pill ${session.snapshot?.connected ? 'pill-good' : 'pill-warn'}`}>
+          {session.snapshot?.connected ? 'Online' : 'Offline'}
+        </div>
       </div>
-      <div className="saved-card-main">
-        <dl className="saved-card-meta">
-          <div>
-            <dt>IP</dt>
-            <dd>{session.host}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd className={session.snapshot?.connected ? 'meta-good' : 'meta-warn'}>
-              {session.snapshot?.connected ? 'Online' : 'Offline'}
-            </dd>
-          </div>
-          <div>
-            <dt>Updated</dt>
-            <dd>{formatTimestamp(session.snapshot?.timestamp ?? null)}</dd>
-          </div>
-        </dl>
+      <dl className="dashboard-active-meta">
+        <div>
+          <dt>IP Address</dt>
+          <dd>{session.host}</dd>
+        </div>
+        <div>
+          <dt>Last Update</dt>
+          <dd>{formatTimestamp(session.snapshot?.timestamp ?? null)}</dd>
+        </div>
+      </dl>
+      <div className="dashboard-active-actions">
         <div className="session-card-actions">
-          <button type="button" className="icon-button" onClick={onSelect} aria-label="View session" title="View">
-            <ViewIcon className="action-icon" />
-          </button>
           <button
             type="button"
-            className="icon-button"
-            onClick={onDisconnect}
+            className="icon-button icon-button-large icon-button-danger"
+            onClick={(event) => {
+              event.stopPropagation()
+              onDisconnect()
+            }}
             aria-label="Disconnect session"
             title="Disconnect"
           >

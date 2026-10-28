@@ -15,6 +15,6 @@ export function loadSavedSessions(): SavedSession[] {
   }
 }
 
-export function persistSavedSessions(sessions: SavedSession[]): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
+export function clearSavedSessions(): void {
+  window.localStorage.removeItem(STORAGE_KEY)
 }

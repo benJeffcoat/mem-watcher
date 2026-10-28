@@ -2,15 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ActiveSession,
   ConnectionDraft,
-  DeviceSnapshot,
+  LogResponse,
   PageKey,
   SavedSession,
   SessionResponse,
 } from '../types/monitor'
-import { loadSavedSessions, persistSavedSessions } from '../utils/sessionStorage'
+import { loadSavedSessions, clearSavedSessions } from '../utils/sessionStorage'
 
 type ConnectTarget = ConnectionDraft & { savedSessionId?: string | null }
-type PolledSession = ActiveSession | null
+type BuilderMode = 'create' | 'connectSaved' | 'editSaved'
 
 function isDraftComplete(draft: ConnectionDraft) {
   return Boolean(
@@ -22,76 +22,87 @@ function isDraftComplete(draft: ConnectionDraft) {
   )
 }
 
-export function useMemWatcherState() {
-  const [page, setPage] = useState<PageKey>('dashboard')
-  const [draft, setDraft] = useState<ConnectionDraft>({
+function buildDefaultDraft(): ConnectionDraft {
+  return {
     name: 'New Session',
     host: '',
     username: 'admin',
     password: '',
     port: '22',
-  })
-  const [savedSessions, setSavedSessions] = useState<SavedSession[]>(() => loadSavedSessions())
+  }
+}
+
+export function useMemWatcherState() {
+  const [page, setPage] = useState<PageKey>('dashboard')
+  const [draft, setDraft] = useState<ConnectionDraft>(buildDefaultDraft)
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('create')
+  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([])
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [editingSavedSessionId, setEditingSavedSessionId] = useState<string | null>(null)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [logsBySession, setLogsBySession] = useState<Record<string, LogResponse | undefined>>({})
+  const [logsLoadingBySession, setLogsLoadingBySession] = useState<Record<string, boolean>>({})
+  const [logsErrorBySession, setLogsErrorBySession] = useState<Record<string, string | null>>({})
   const [isConnecting, setIsConnecting] = useState(false)
   const [globalError, setGlobalError] = useState<string | null>(null)
-  const activeSessionsRef = useRef<ActiveSession[]>([])
+  const sessionRevision = useRef(0)
 
   useEffect(() => {
-    activeSessionsRef.current = activeSessions
-  }, [activeSessions])
+    let cancelled = false
+    let polling = false
 
-  useEffect(() => {
-    persistSavedSessions(savedSessions)
-  }, [savedSessions])
-
-  useEffect(() => {
-    const intervalId = window.setInterval(async () => {
-      const currentSessions = activeSessionsRef.current
-      if (!currentSessions.length) {
-        return
+    async function restoreProfiles() {
+      try {
+        // Import existing browser profiles once, without replacing backend copies.
+        const legacy = loadSavedSessions()
+        const response = await fetch(legacy.length ? '/api/saved-sessions/import' : '/api/saved-sessions',
+          legacy.length ? {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(legacy),
+          } : undefined)
+        if (!response.ok) throw new Error('Could not load saved sessions.')
+        const profiles = await response.json() as SavedSession[]
+        if (cancelled) return
+        setSavedSessions(profiles)
+        clearSavedSessions()
+      } catch (error) {
+        if (!cancelled) setGlobalError(error instanceof Error ? error.message : 'Could not load saved sessions.')
       }
-      const refreshed = await Promise.all<PolledSession>(
-        currentSessions.map(async (session) => {
-          try {
-            const response = await fetch(`/api/sessions/${session.sessionId}`)
-            if (response.status === 404) {
-              return null
-            }
-            if (!response.ok) {
-              return { ...session, error: 'Polling session failed.' }
-            }
-            const snapshot = (await response.json()) as DeviceSnapshot
-            return { ...session, snapshot, error: snapshot.error }
-          } catch (error) {
-            return {
-              ...session,
-              error: error instanceof Error ? error.message : 'Polling session failed.',
-            }
-          }
-        }),
-      )
-      const nextSessions = refreshed.filter((session): session is ActiveSession => Boolean(session))
-      setActiveSessions(nextSessions)
-      setSelectedSessionId((current) => {
-        if (!current) {
-          return nextSessions[0]?.sessionId ?? null
-        }
-        return nextSessions.some((session) => session.sessionId === current)
-          ? current
-          : nextSessions[0]?.sessionId ?? null
-      })
-    }, 3000)
-    return () => window.clearInterval(intervalId)
-  }, [])
+    }
 
-  useEffect(() => {
+    async function refreshSessions() {
+      if (polling) return
+      polling = true
+      const revision = sessionRevision.current
+      try {
+        const response = await fetch('/api/sessions')
+        if (!response.ok) throw new Error('Could not load active sessions.')
+        const sessions = await response.json() as ActiveSession[]
+        if (cancelled || revision !== sessionRevision.current) return
+        setActiveSessions(sessions)
+        setSelectedSessionId((current) => sessions.some((session) => session.sessionId === current)
+          ? current : sessions[0]?.sessionId ?? null)
+      } catch (error) {
+        if (!cancelled && revision === sessionRevision.current) {
+          setActiveSessions((current) => current.map((session) => ({
+            ...session,
+            error: error instanceof Error ? error.message : 'Polling session failed.',
+          })))
+          setGlobalError(error instanceof Error ? error.message : 'Could not load active sessions.')
+        }
+      } finally {
+        polling = false
+      }
+    }
+
+    void restoreProfiles()
+    void refreshSessions()
+    const intervalId = window.setInterval(() => void refreshSessions(), 3000)
+    // Connections belong to the backend; only an explicit Disconnect closes them.
     return () => {
-      activeSessionsRef.current.forEach((session) => {
-        void fetch(`/api/sessions/${session.sessionId}`, { method: 'DELETE' })
-      })
+      cancelled = true
+      window.clearInterval(intervalId)
     }
   }, [])
 
@@ -99,6 +110,9 @@ export function useMemWatcherState() {
     activeSessions.find((session) => session.sessionId === selectedSessionId) ?? activeSessions[0] ?? null
 
   async function connectSession(target: ConnectTarget) {
+    const savedSessionId = target.savedSessionId ?? savedSessions.find((session) =>
+      session.name === target.name && session.host === target.host &&
+      session.username === target.username && session.port === Number(target.port))?.id ?? null
     setIsConnecting(true)
     setGlobalError(null)
     try {
@@ -106,6 +120,8 @@ export function useMemWatcherState() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: target.name,
+          savedSessionId,
           host: target.host,
           username: target.username,
           password: target.password,
@@ -119,7 +135,7 @@ export function useMemWatcherState() {
       }
       const nextSession: ActiveSession = {
         sessionId: payload.session_id,
-        savedSessionId: target.savedSessionId ?? null,
+        savedSessionId,
         name: target.name || target.host,
         host: target.host,
         username: target.username,
@@ -127,13 +143,15 @@ export function useMemWatcherState() {
         snapshot: payload.snapshot,
         error: payload.snapshot.error,
       }
-      setActiveSessions((current) => [nextSession, ...current.filter((item) => item.host !== nextSession.host)])
+      sessionRevision.current += 1
+      setActiveSessions((current) => [nextSession, ...current])
       setSelectedSessionId(payload.session_id)
       setDraft((current) => ({ ...current, password: '' }))
-      if (target.savedSessionId) {
+      setBuilderMode('create')
+      if (savedSessionId) {
         setSavedSessions((current) =>
           current.map((item) =>
-            item.id === target.savedSessionId ? { ...item, lastUsedAt: new Date().toISOString() } : item,
+            item.id === savedSessionId ? { ...item, lastUsedAt: new Date().toISOString() } : item,
           ),
         )
       }
@@ -146,47 +164,93 @@ export function useMemWatcherState() {
   }
 
   async function disconnectSession(sessionId: string) {
-    await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Could not disconnect session.')
+    } catch (error) {
+      setGlobalError(error instanceof Error ? error.message : 'Could not disconnect session.')
+      return
+    }
+    sessionRevision.current += 1
     setActiveSessions((current) => current.filter((session) => session.sessionId !== sessionId))
     setSelectedSessionId((current) => (current === sessionId ? null : current))
+    setLogsBySession((current) => {
+      const next = { ...current }
+      delete next[sessionId]
+      return next
+    })
+    setLogsLoadingBySession((current) => {
+      const next = { ...current }
+      delete next[sessionId]
+      return next
+    })
+    setLogsErrorBySession((current) => {
+      const next = { ...current }
+      delete next[sessionId]
+      return next
+    })
   }
 
-  function saveDraftSession() {
+  async function fetchSessionLogs(sessionId: string, command: string) {
+    setLogsLoadingBySession((current) => ({ ...current, [sessionId]: true }))
+    setLogsErrorBySession((current) => ({ ...current, [sessionId]: null }))
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/logs?command=${encodeURIComponent(command)}`)
+      const payload = (await response.json()) as LogResponse | { detail?: string }
+      if (!response.ok || !('command' in payload)) {
+        const message = 'detail' in payload ? payload.detail ?? 'Log request failed.' : 'Log request failed.'
+        setLogsErrorBySession((current) => ({ ...current, [sessionId]: message }))
+        return null
+      }
+      setLogsBySession((current) => ({ ...current, [sessionId]: payload }))
+      return payload
+    } catch (error) {
+      setLogsErrorBySession((current) => ({
+        ...current,
+        [sessionId]: error instanceof Error ? error.message : 'Log request failed.',
+      }))
+      return null
+    } finally {
+      setLogsLoadingBySession((current) => ({ ...current, [sessionId]: false }))
+    }
+  }
+
+  async function saveDraftSession() {
     if (!isDraftComplete(draft)) {
       setGlobalError('Complete name, host, username, and port before saving.')
       return
     }
-    setGlobalError(null)
-    if (editingSavedSessionId) {
-      setSavedSessions((current) =>
-        current.map((session) =>
-          session.id === editingSavedSessionId
-            ? {
-                ...session,
-                name: draft.name.trim() || draft.host.trim(),
-                host: draft.host.trim(),
-                username: draft.username.trim(),
-                port: Number(draft.port),
-              }
-            : session,
-        ),
-      )
-      setEditingSavedSessionId(null)
-      return
-    }
-    const nextSession: SavedSession = {
-      id: crypto.randomUUID(),
-      name: draft.name.trim() || draft.host.trim(),
+    const previous = savedSessions.find((session) => session.id === editingSavedSessionId)
+    const profile: SavedSession = {
+      id: editingSavedSessionId ?? crypto.randomUUID(),
+      name: draft.name.trim(),
       host: draft.host.trim(),
       username: draft.username.trim(),
       port: Number(draft.port),
-      lastUsedAt: null,
+      lastUsedAt: previous?.lastUsedAt ?? null,
     }
-    setSavedSessions((current) => [nextSession, ...current])
+    try {
+      const response = await fetch(`/api/saved-sessions/${profile.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      })
+      if (!response.ok) throw new Error('Could not save session.')
+      const saved = await response.json() as SavedSession
+      setSavedSessions((current) => [saved, ...current.filter((session) => session.id !== saved.id)])
+      setGlobalError(null)
+      setEditingSavedSessionId(null)
+      setDraft(buildDefaultDraft())
+      setBuilderMode('create')
+    } catch (error) {
+      setGlobalError(error instanceof Error ? error.message : 'Could not save session.')
+    }
   }
 
   function loadSavedSession(session: SavedSession) {
     setEditingSavedSessionId(null)
+    setBuilderMode('connectSaved')
+    setGlobalError(null)
     setDraft({
       name: session.name,
       host: session.host,
@@ -199,6 +263,7 @@ export function useMemWatcherState() {
 
   function editSavedSession(session: SavedSession) {
     setEditingSavedSessionId(session.id)
+    setBuilderMode('editSaved')
     setGlobalError(null)
     setDraft({
       name: session.name,
@@ -210,9 +275,22 @@ export function useMemWatcherState() {
     setPage('sessions')
   }
 
-  function deleteSavedSession(sessionId: string) {
-    setSavedSessions((current) => current.filter((session) => session.id !== sessionId))
-    setEditingSavedSessionId((current) => (current === sessionId ? null : current))
+  async function deleteSavedSession(sessionId: string) {
+    try {
+      const response = await fetch(`/api/saved-sessions/${sessionId}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Could not delete saved session.')
+      setSavedSessions((current) => current.filter((session) => session.id !== sessionId))
+      setEditingSavedSessionId((current) => (current === sessionId ? null : current))
+    } catch (error) {
+      setGlobalError(error instanceof Error ? error.message : 'Could not delete saved session.')
+    }
+  }
+
+  function cancelEditSavedSession() {
+    setEditingSavedSessionId(null)
+    setBuilderMode('create')
+    setGlobalError(null)
+    setDraft(buildDefaultDraft())
   }
 
   const summary = useMemo(() => {
@@ -228,6 +306,7 @@ export function useMemWatcherState() {
     page,
     setPage,
     draft,
+    builderMode,
     setDraft,
     savedSessions,
     activeSessions,
@@ -236,6 +315,9 @@ export function useMemWatcherState() {
     setSelectedSessionId,
     selectedSession,
     isConnecting,
+    logsBySession,
+    logsLoadingBySession,
+    logsErrorBySession,
     canSaveDraft: isDraftComplete(draft),
     globalError,
     summary,
@@ -244,6 +326,8 @@ export function useMemWatcherState() {
     saveDraftSession,
     loadSavedSession,
     editSavedSession,
+    cancelEditSavedSession,
     deleteSavedSession,
+    fetchSessionLogs,
   }
 }

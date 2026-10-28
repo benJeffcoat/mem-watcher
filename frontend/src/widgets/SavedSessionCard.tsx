@@ -33,13 +33,31 @@ export function SavedSessionCard({
           </div>
         </dl>
         <div className="session-card-actions">
-          <button type="button" className="icon-button" onClick={onLoad} aria-label="Load session" title="Load">
+          <button
+            type="button"
+            className="icon-button icon-button-primary"
+            onClick={onLoad}
+            aria-label="Load session"
+            title="Load"
+          >
             <LoadIcon className="action-icon" />
           </button>
-          <button type="button" className="icon-button" onClick={onEdit} aria-label="Edit session" title="Edit">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onEdit}
+            aria-label="Edit session"
+            title="Edit"
+          >
             <EditIcon className="action-icon" />
           </button>
-          <button type="button" className="icon-button" onClick={onDelete} aria-label="Delete session" title="Delete">
+          <button
+            type="button"
+            className="icon-button icon-button-danger"
+            onClick={onDelete}
+            aria-label="Delete session"
+            title="Delete"
+          >
             <DeleteIcon className="action-icon" />
           </button>
         </div>

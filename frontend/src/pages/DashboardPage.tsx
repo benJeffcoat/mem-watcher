@@ -11,7 +11,7 @@ export function DashboardPage({ state }: { state: AppState }) {
         title="Active sessions"
       />
 
-      <section className="session-grid">
+      <section className="session-grid dashboard-session-grid">
         {state.activeSessions.length === 0 ? (
           <div className="panel-card empty-state">
             <p className="eyebrow">No Active Sessions</p>
