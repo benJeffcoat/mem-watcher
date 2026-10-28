@@ -26,6 +26,18 @@ LOG_LINE_RE = re.compile(
     r"^\s*(?:(?P<line_number>\d+)\.\s+)?(?P<level>[A-Za-z]+):\s+"
     r"(?P<source>.+?)\s+#\s+(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+#\s*(?P<message>.*)$"
 )
+CPULOAD_CPU_RE = re.compile(
+    r"CPU:\s+([0-9]+(?:\.[0-9]+)?)%\s+usr\s+([0-9]+(?:\.[0-9]+)?)%\s+sys.*?([0-9]+(?:\.[0-9]+)?)%\s+idle",
+    re.IGNORECASE,
+)
+CPULOAD_LOADAVG_RE = re.compile(
+    r"Load average:\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)\s+([0-9]+(?:\.[0-9]+)?)",
+    re.IGNORECASE,
+)
+CPULOAD_MEM_RE = re.compile(
+    r"Mem:\s+(\d+)K\s+used,\s+(\d+)K\s+free(?:,\s+(\d+)K\s+shrd,\s+(\d+)K\s+buff,\s+(\d+)K\s+cached)?",
+    re.IGNORECASE,
+)
 
 
 class ConnectRequest(BaseModel):
@@ -95,6 +107,21 @@ class MemorySnapshot(BaseModel):
     free_bytes: int
 
 
+class CPUSnapshot(BaseModel):
+    used_percent: float
+    user_percent: float
+    sys_percent: float
+    idle_percent: float
+    load_1m: float
+    load_5m: float
+    load_15m: float
+    mem_used_bytes: int | None = None
+    mem_free_bytes: int | None = None
+    mem_shared_bytes: int | None = None
+    mem_buffer_bytes: int | None = None
+    mem_cached_bytes: int | None = None
+
+
 class DeviceSnapshot(BaseModel):
     connected: bool
     host: str
@@ -102,9 +129,11 @@ class DeviceSnapshot(BaseModel):
     timestamp: str | None
     uptime: str | None
     memory: MemorySnapshot | None
+    cpu: CPUSnapshot | None
     processes: list[ProcessInfo]
     error: str | None
     history: list[dict[str, Any]]
+    cpu_history: list[dict[str, Any]]
 
 
 class SessionResponse(BaseModel):
@@ -173,6 +202,39 @@ def _parse_ramfree(output: str) -> MemorySnapshot:
         total_bytes=int(total_match.group(1)),
         used_bytes=int(used_match.group(1)),
         free_bytes=int(free_match.group(1)),
+    )
+
+
+def _parse_cpuload(output: str) -> CPUSnapshot:
+    cpu_match = CPULOAD_CPU_RE.search(output)
+    load_avg_match = CPULOAD_LOADAVG_RE.search(output)
+    if not cpu_match or not load_avg_match:
+        raise ValueError("Could not parse CPULoad output.")
+
+    user_percent = float(cpu_match.group(1))
+    sys_percent = float(cpu_match.group(2))
+    idle_percent = float(cpu_match.group(3))
+    mem_match = CPULOAD_MEM_RE.search(output)
+
+    mem_used_bytes = int(mem_match.group(1)) * 1024 if mem_match else None
+    mem_free_bytes = int(mem_match.group(2)) * 1024 if mem_match else None
+    mem_shared_bytes = int(mem_match.group(3)) * 1024 if mem_match and mem_match.group(3) else None
+    mem_buffer_bytes = int(mem_match.group(4)) * 1024 if mem_match and mem_match.group(4) else None
+    mem_cached_bytes = int(mem_match.group(5)) * 1024 if mem_match and mem_match.group(5) else None
+
+    return CPUSnapshot(
+        used_percent=max(0.0, min(100.0, 100.0 - idle_percent)),
+        user_percent=user_percent,
+        sys_percent=sys_percent,
+        idle_percent=idle_percent,
+        load_1m=float(load_avg_match.group(1)),
+        load_5m=float(load_avg_match.group(2)),
+        load_15m=float(load_avg_match.group(3)),
+        mem_used_bytes=mem_used_bytes,
+        mem_free_bytes=mem_free_bytes,
+        mem_shared_bytes=mem_shared_bytes,
+        mem_buffer_bytes=mem_buffer_bytes,
+        mem_cached_bytes=mem_cached_bytes,
     )
 
 
@@ -338,9 +400,11 @@ class MonitorSession:
     last_error: str | None = None
     last_snapshot_at: str | None = None
     memory: MemorySnapshot | None = None
+    cpu: CPUSnapshot | None = None
     processes: list[ProcessInfo] = field(default_factory=list)
     uptime: str | None = None
     history: deque[dict[str, Any]] = field(default_factory=deque)
+    cpu_history: deque[dict[str, Any]] = field(default_factory=lambda: deque(maxlen=24))
 
     async def start(self) -> None:
         await self._connect()
@@ -395,10 +459,12 @@ class MonitorSession:
     async def _poll_once(self) -> None:
         try:
             ramfree_output = await self._run_command("ramfree")
+            cpuload_output = await self._run_command("cpuload")
             taskstat_output = await self._run_command("taskstat")
             top_output = await self._run_command("top -lines:all")
             uptime_output = await self._run_command("uptime")
             self.memory = _parse_ramfree(ramfree_output)
+            self.cpu = _parse_cpuload(cpuload_output)
             self.processes = _merge_process_lists(
                 _parse_taskstat(taskstat_output),
                 _parse_top(top_output),
@@ -413,6 +479,19 @@ class MonitorSession:
                         "timestamp": self.last_snapshot_at,
                         "usedPercent": self.memory.used_percent,
                         "freeBytes": self.memory.free_bytes,
+                    }
+                )
+            if self.cpu is not None:
+                mem_used_percent = None
+                if self.cpu.mem_used_bytes is not None and self.cpu.mem_free_bytes is not None:
+                    mem_total = self.cpu.mem_used_bytes + self.cpu.mem_free_bytes
+                    if mem_total > 0:
+                        mem_used_percent = (self.cpu.mem_used_bytes / mem_total) * 100.0
+                self.cpu_history.append(
+                    {
+                        "timestamp": self.last_snapshot_at,
+                        "usedPercent": self.cpu.used_percent,
+                        "memUsedPercent": mem_used_percent,
                     }
                 )
         except Exception as exc:
@@ -449,9 +528,11 @@ class MonitorSession:
             timestamp=self.last_snapshot_at,
             uptime=self.uptime,
             memory=self.memory,
+            cpu=self.cpu,
             processes=self.processes,
             error=self.last_error,
             history=list(self.history),
+            cpu_history=list(self.cpu_history),
         )
 
 

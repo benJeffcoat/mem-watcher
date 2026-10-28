@@ -18,7 +18,7 @@ export function MemWatcherApp() {
       return <PerformancePage state={state} />
     }
     if (state.page === 'logs') {
-      return <LogsPage state={state} />
+      return <LogsPage key={state.selectedSession?.sessionId ?? "no-session"} state={state} />
     }
     return <DashboardPage state={state} />
   }, [state])

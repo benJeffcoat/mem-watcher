@@ -1,6 +1,18 @@
 import { useMemo, useState } from 'react'
-import type { HistoryPoint, PieSegment } from '../types/monitor'
+import type { PieSegment, UtilizationPoint } from '../types/monitor'
 import { formatTimestamp } from '../utils/formatters'
+import { InfoIcon } from './Icons'
+
+type DetailRow = {
+  label: string
+  value: string
+  helpText?: string
+}
+
+type TrendLegendItem = {
+  label: string
+  color: string
+}
 
 function buildArcPath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
   const startRadians = (startAngle - 90) * (Math.PI / 180)
@@ -13,11 +25,11 @@ function buildArcPath(cx: number, cy: number, radius: number, startAngle: number
   return `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${endX} ${endY}`
 }
 
-function sampleHistory(history: HistoryPoint[], maxPoints: number): HistoryPoint[] {
+function sampleHistory(history: UtilizationPoint[], maxPoints: number): UtilizationPoint[] {
   if (history.length <= maxPoints) {
     return history
   }
-  const sampled: HistoryPoint[] = []
+  const sampled: UtilizationPoint[] = []
   const lastIndex = history.length - 1
   for (let index = 0; index < maxPoints; index += 1) {
     const sourceIndex = Math.round((index / (maxPoints - 1)) * lastIndex)
@@ -49,18 +61,31 @@ function buildSmoothPath(points: { x: number; y: number }[]): string {
 export function MemoryOverviewCard({
   title,
   totalLabel,
+  totalHelpText,
   segments,
   history,
+  trendTitle = 'Memory Trend',
+  details = [],
+  secondaryHistory = [],
+  secondaryColor = '#f97316',
+  trendLegend = [],
 }: {
   title: string
   totalLabel: string
+  totalHelpText?: string
   segments: PieSegment[]
-  history: HistoryPoint[]
+  history: UtilizationPoint[]
+  trendTitle?: string
+  details?: DetailRow[]
+  secondaryHistory?: UtilizationPoint[]
+  secondaryColor?: string
+  trendLegend?: TrendLegendItem[]
 }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
 
   const sampledHistory = useMemo(() => sampleHistory(history, 100), [history])
+  const sampledSecondaryHistory = useMemo(() => sampleHistory(secondaryHistory, 100), [secondaryHistory])
 
   if (total <= 0) {
     return (
@@ -73,7 +98,15 @@ export function MemoryOverviewCard({
     )
   }
 
-  let runningAngle = 0
+  const donutSegments = segments.reduce<Array<{ segment: PieSegment; startAngle: number; endAngle: number }>>(
+    (acc, segment) => {
+      const startAngle = acc.length ? acc[acc.length - 1].endAngle : 0
+      const endAngle = startAngle + (segment.value / total) * 360
+      acc.push({ segment, startAngle, endAngle })
+      return acc
+    },
+    [],
+  )
   const showTrend = sampledHistory.length >= 2
   const width = 560
   const height = 118
@@ -88,21 +121,33 @@ export function MemoryOverviewCard({
   }))
   const hoveredPoint = hoveredIndex === null ? null : chartPoints[hoveredIndex]
   const smoothPath = buildSmoothPath(chartPoints)
+  const secondaryPoints = sampledSecondaryHistory.map((point, index) => ({
+    x: left + (index / Math.max(sampledSecondaryHistory.length - 1, 1)) * chartWidth,
+    y: top + ((100 - point.usedPercent) / 100) * chartHeight,
+  }))
 
   return (
     <div className="chart-card memory-card">
       <div className="chart-header">
         <p className="eyebrow">{title}</p>
-        <strong>{totalLabel}</strong>
+        <div className="chart-total-label">
+          <strong>{totalLabel}</strong>
+          {totalHelpText ? (
+            <span className="memory-info">
+              <button className="memory-info-button" type="button" aria-label={`${title} load average details`}>
+                <InfoIcon className="memory-info-icon" />
+              </button>
+              <span className="memory-info-popover" role="tooltip">
+                {totalHelpText}
+              </span>
+            </span>
+          ) : null}
+        </div>
       </div>
       <div className="chart-shell">
         <svg viewBox="0 0 220 220" className="donut-chart" aria-hidden="true">
           <circle cx="110" cy="110" r="78" className="donut-track" />
-          {segments.map((segment) => {
-            const percentage = segment.value / total
-            const startAngle = runningAngle
-            const endAngle = runningAngle + percentage * 360
-            runningAngle = endAngle
+          {donutSegments.map(({ segment, startAngle, endAngle }) => {
             return (
               <path
                 key={segment.label}
@@ -132,17 +177,49 @@ export function MemoryOverviewCard({
           })}
         </div>
       </div>
+      {details.length ? (
+        <div className="memory-meta-grid">
+          {details.map((item) => (
+            <div className="memory-meta-item" key={item.label}>
+              <div className="memory-meta-label-row">
+                <p className="eyebrow">{item.label}</p>
+                {item.helpText ? (
+                  <span className="memory-info">
+                    <button className="memory-info-button" type="button" aria-label={`${item.label} details`}>
+                      <InfoIcon className="memory-info-icon" />
+                    </button>
+                    <span className="memory-info-popover" role="tooltip">
+                      {item.helpText}
+                    </span>
+                  </span>
+                ) : null}
+              </div>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="memory-trend-inline">
         <div className="memory-trend-inline-head">
-          <p className="eyebrow">Memory Trend</p>
+          <p className="eyebrow">{trendTitle}</p>
           <strong>{sampledHistory.length} samples</strong>
         </div>
+        {trendLegend.length ? (
+          <div className="trend-legend" aria-label="Trend legend">
+            {trendLegend.map((item) => (
+              <span className="trend-legend-item" key={`${item.label}-${item.color}`}>
+                <span className="trend-legend-swatch" style={{ backgroundColor: item.color }} aria-hidden="true" />
+                <span>{item.label}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {showTrend ? (
           <>
             <svg
               viewBox={`0 0 ${width} ${height}`}
               className="history-chart compact-history-chart"
-              aria-label="Memory trend"
+              aria-label={trendTitle}
             >
               <rect x="0" y="0" width={width} height={height} rx="14" className="history-bg" />
               <text x="10" y={top + 4} className="history-axis-label">
@@ -170,6 +247,13 @@ export function MemoryOverviewCard({
                 className="history-grid"
               />
               <path d={smoothPath} className="history-line" />
+              {secondaryPoints.length >= 2 ? (
+                <path
+                  d={buildSmoothPath(secondaryPoints)}
+                  className="history-line history-line-secondary"
+                  style={{ stroke: secondaryColor }}
+                />
+              ) : null}
               {hoveredPoint ? (
                 <>
                   <line
@@ -183,7 +267,7 @@ export function MemoryOverviewCard({
                   <g transform={`translate(${Math.min(hoveredPoint.x + 10, width - 150)}, ${Math.max(hoveredPoint.y - 42, 8)})`}>
                     <rect width="140" height="34" rx="8" className="history-tooltip-bg" />
                     <text x="10" y="14" className="history-tooltip-value">
-                      {hoveredPoint.point.usedPercent.toFixed(1)}% RAM
+                      {hoveredPoint.point.usedPercent.toFixed(1)}% {title === 'CPU Load' ? 'CPU' : 'RAM'}
                     </text>
                     <text x="10" y="27" className="history-tooltip-time">
                       {formatTimestamp(hoveredPoint.point.timestamp)}

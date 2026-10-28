@@ -34,6 +34,27 @@ export type MemorySnapshot = {
   free_bytes: number
 }
 
+export type CPUSnapshot = {
+  used_percent: number
+  user_percent: number
+  sys_percent: number
+  idle_percent: number
+  load_1m: number
+  load_5m: number
+  load_15m: number
+  mem_used_bytes: number | null
+  mem_free_bytes: number | null
+  mem_shared_bytes: number | null
+  mem_buffer_bytes: number | null
+  mem_cached_bytes: number | null
+}
+
+export type UtilizationPoint = {
+  timestamp: string
+  usedPercent: number
+  memUsedPercent?: number | null
+}
+
 export type HistoryPoint = {
   timestamp: string
   usedPercent: number
@@ -47,9 +68,11 @@ export type DeviceSnapshot = {
   timestamp: string | null
   uptime: string | null
   memory: MemorySnapshot | null
+  cpu: CPUSnapshot | null
   processes: ProcessInfo[]
   error: string | null
   history: HistoryPoint[]
+  cpu_history: UtilizationPoint[]
 }
 
 export type SessionResponse = {

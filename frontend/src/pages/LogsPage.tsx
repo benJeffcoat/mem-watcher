@@ -37,12 +37,6 @@ export function LogsPage({ state }: { state: AppState }) {
   const logError = session ? state.logsErrorBySession[session.sessionId] : null
 
   useEffect(() => {
-    setLevelFilter('all')
-    setSourceFilter('all')
-    setCopied(false)
-  }, [session?.sessionId])
-
-  useEffect(() => {
     if (!session || logResponse || isLoading) {
       return
     }
